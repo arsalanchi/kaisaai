@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kaisa AI - Voice Command</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; justify-content: center; align-items: center; color: #fff; }
+        .container { width: 90%; max-width: 800px; background: rgba(0,0,0,0.3); backdrop-filter: blur(10px); border-radius: 20px; padding: 2rem; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+        h1 { font-size: 2.5rem; margin-bottom: 1rem; text-align: center; }
+        .subtitle { text-align: center; opacity: 0.8; margin-bottom: 2rem; }
+        #messages { height: 400px; overflow-y: auto; margin-bottom: 1rem; padding: 1rem; background: rgba(0,0,0,0.2); border-radius: 10px; }
+        .message { margin-bottom: 1rem; padding: 0.8rem; border-radius: 10px; }
+        .user { background: rgba(102, 126, 234, 0.3); text-align: right; }
+        .kaisa { background: rgba(118, 75, 162, 0.3); text-align: left; }
+        .controls { display: flex; gap: 1rem; margin-bottom: 1rem; }
+        input { flex: 1; padding: 1rem; border: none; border-radius: 10px; background: rgba(255,255,255,0.1); color: #fff; font-size: 1rem; }
+        input::placeholder { color: rgba(255,255,255,0.5); }
+        button { padding: 1rem 2rem; border: none; border-radius: 10px; background: rgba(255,255,255,0.2); color: #fff; cursor: pointer; font-weight: bold; transition: all 0.3s; }
+        button:hover { background: rgba(255,255,255,0.3); transform: scale(1.05); }
+        #voiceBtn { width: 60px; height: 60px; border-radius: 50%; font-size: 1.5rem; }
+        #voiceBtn.recording { background: #e74c3c; animation: pulse 1s infinite; }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+        .status { text-align: center; margin-top: 1rem; opacity: 0.7; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>⚡ Kaisa AI</h1>
+        <p class="subtitle">Digital Voice of the Revolution</p>
+        <div id="messages"></div>
+        <div class="controls">
+            <input type="text" id="messageInput" placeholder="Type or speak your command...">
+            <button id="voiceBtn" onclick="toggleVoice()">🎤</button>
+            <button onclick="sendMessage()">Send</button>
+        </div>
+        <div class="status" id="status">Ready</div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        const messagesDiv = document.getElementById('messages');
+        const input = document.getElementById('messageInput');
+        const voiceBtn = document.getElementById('voiceBtn');
+        const statusDiv = document.getElementById('status');
+        
+        let recognition;
+        let isRecording = false;
+        
+        // Initialize speech recognition
+        if ('webkitSpeechRecognition' in window) {
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.lang = 'en-US';
+            
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                input.value = transcript;
+                statusDiv.textContent = 'Voice captured';
+            };
+            
+            recognition.onend = () => {
+                isRecording = false;
+                voiceBtn.classList.remove('recording');
+                statusDiv.textContent = 'Ready';
+            };
+            
+            recognition.onerror = (event) => {
+                statusDiv.textContent = 'Voice error: ' + event.error;
+                isRecording = false;
+                voiceBtn.classList.remove('recording');
+            };
+        } else {
+            voiceBtn.style.display = 'none';
+            statusDiv.textContent = 'Voice not supported in this browser';
+        }
+        
+        function toggleVoice() {
+            if (!recognition) return;
+            
+            if (isRecording) {
+                recognition.stop();
+            } else {
+                recognition.start();
+                isRecording = true;
+                voiceBtn.classList.add('recording');
+                statusDiv.textContent = 'Listening...';
+            }
+        }
+        
+        async function sendMessage() {
+            const message = input.value.trim();
+            if (!message) return;
+            
+            addMessage('You', message, 'user');
+            input.value = '';
+            statusDiv.textContent = 'Thinking...';
+            
+            try {
+                const response = await fetch(API_BASE + '/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    addMessage('Kaisa AI', data.response, 'kaisa');
+                    speak(data.response);
+                    statusDiv.textContent = 'Ready';
+                } else {
+                    addMessage('System', 'Error: ' + data.error, 'kaisa');
+                    statusDiv.textContent = 'Error occurred';
+                }
+            } catch (error) {
+                addMessage('System', 'Connection error', 'kaisa');
+                statusDiv.textContent = 'Connection failed';
+            }
+        }
+        
+        function addMessage(sender, text, className) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${className}`;
+            msgDiv.innerHTML = `<strong>${sender}:</strong> ${text}`;
+            messagesDiv.appendChild(msgDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        function speak(text) {
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.rate = 1.0;
+                utterance.pitch = 1.0;
+                speechSynthesis.speak(utterance);
+            }
+        }
+        
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+        
+        // Initial status check
+        fetch(API_BASE + '/health')
+            .then(r => r.json())
+            .then(data => statusDiv.textContent = `Status: ${data.status} | AI: ${data.ai}`)
+            .catch(() => statusDiv.textContent = 'Connection error');
+    </script>
+</body>
+</html>
