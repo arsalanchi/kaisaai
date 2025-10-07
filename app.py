@@ -1,9 +1,11 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import os
 import google.generativeai as genai
 import logging
 
 app = Flask(__name__)
+CORS(app)  # This allows bohot.space to connect
 logging.basicConfig(level=logging.INFO)
 
 try:
